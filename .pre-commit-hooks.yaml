@@ -1,0 +1,9 @@
+- id: pt-appsec-hook
+  name: OWASP Validator Hook
+  description: Run OWASP validations using specialized LLM models.
+  entry: python -m hooks.hook
+  language: system # or python, if your hook has dependencies managed by pre-commit
+  types: [python] # Apply this hook only to Python files
+  always_run: true
+  fail_fast: true
+  verbose: true
