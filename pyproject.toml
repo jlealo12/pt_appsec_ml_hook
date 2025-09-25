@@ -1,7 +1,16 @@
 [project]
 name = "pt-appsec-ml-hook"
-version = "0.0.1"
+version = "0.0.3"
 description = "Run OWASP validations using specialized LLM models"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Configuración para hatchling (compatible con uv)
+[tool.hatch.build.targets.wheel]
+packages = ["hooks"]
