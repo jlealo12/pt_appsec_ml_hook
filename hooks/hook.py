@@ -2,11 +2,15 @@
 """
 Pre-commit hook para validar código mediante API con OAuth2.0
 """
+import json
 import os
 import sys
-import json
+
 import requests
-from datetime import datetime
+from dotenv import load_dotenv
+
+# Load env
+load_dotenv()
 
 
 def load_auth_token():
