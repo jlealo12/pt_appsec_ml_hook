@@ -86,7 +86,7 @@ def evaluate_code(base_url, token):
 
         if response.status_code == 200:
             print("✅ Código evaluado exitosamente")
-            for item in response.body:
+            for item in response.json()["result"]:
                 print(f"Categoría evaluada: {item['owasp_name']}")
                 print(item["response"])
             return True
