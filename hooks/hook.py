@@ -147,13 +147,35 @@ def check_api_health(base_url):
         return False
 
 
+def format_changes_as_string(changes):
+    """Formatea los cambios como un string para enviar a la API."""
+    formatted_parts = []
+
+    for file_data in changes:
+        filepath = file_data["filepath"]
+        content = file_data["content"]
+        diff = file_data["diff"]
+
+        # Formato: filepath seguido del contenido completo
+        file_section = f"=== File: {filepath} ===\n"
+        file_section += f"{content}\n"
+        file_section += f"\n=== Diff for {filepath} ===\n"
+        file_section += f"{diff}\n"
+
+        formatted_parts.append(file_section)
+
+    return "\n".join(formatted_parts)
+
+
 def evaluate_code(base_url, token, changes):
     """Envía el código para evaluación a la API."""
     evaluate_url = f"{base_url}/evaluate"
 
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-    payload = {"code": changes}
+    code_string = format_changes_as_string(changes)
+
+    payload = {"code": code_string}
 
     try:
         print(f"📤 Enviando código para evaluación...")
