@@ -44,6 +44,85 @@ def load_auth_token():
         return None
 
 
+def get_staged_python_files():
+    """Obtiene la lista de archivos Python en el staging area."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        files = result.stdout.strip().split("\n")
+        python_files = [f for f in files if f.endswith(".py") and f]
+
+        return python_files
+    except subprocess.CalledProcessError as e:
+        print(f"❌ ERROR al obtener archivos staged: {e}")
+        return []
+
+
+def get_file_changes(filepath):
+    """Obtiene los cambios (diff) de un archivo específico."""
+    try:
+        # Obtener el diff del archivo staged
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--", filepath],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        print(f"❌ ERROR al obtener cambios de {filepath}: {e}")
+        return None
+
+
+def get_file_content(filepath):
+    """Obtiene el contenido completo del archivo después de los cambios."""
+    try:
+        # Obtener el contenido del archivo en el staging area
+        result = subprocess.run(
+            ["git", "show", f":{filepath}"], capture_output=True, text=True, check=True
+        )
+
+        return result.stdout
+    except subprocess.CalledProcessError:
+        # Si falla, puede ser un archivo nuevo, intentar leerlo directamente
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            print(f"⚠️  No se pudo leer el contenido de {filepath}: {e}")
+            return None
+
+
+def collect_changes():
+    """Recopila todos los cambios en archivos Python."""
+    python_files = get_staged_python_files()
+
+    if not python_files:
+        print("ℹ️  No hay archivos Python en el commit")
+        return None
+
+    print(f"📝 Archivos Python detectados: {len(python_files)}")
+
+    changes = []
+    for filepath in python_files:
+        print(f"   • {filepath}")
+
+        diff = get_file_changes(filepath)
+        content = get_file_content(filepath)
+
+        file_data = {"filepath": filepath, "diff": diff, "content": content}
+
+        changes.append(file_data)
+
+    return changes
+
+
 def check_api_health(base_url):
     """Verifica el estado de salud de la API."""
     health_url = f"{base_url}/health"
@@ -70,13 +149,13 @@ def check_api_health(base_url):
         return False
 
 
-def evaluate_code(base_url, token):
+def evaluate_code(base_url, token, changes):
     """Envía el código para evaluación a la API."""
     evaluate_url = f"{base_url}/evaluate"
 
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-    payload = {"code": "test"}
+    payload = {"code": changes}
 
     try:
         print(f"📤 Enviando código para evaluación...")
@@ -137,13 +216,20 @@ def main():
     if not token:
         sys.exit(1)
 
+    # Recopilar cambios en archivos Python
+    changes = collect_changes()
+    if not changes:
+        print("\nℹ️  No hay cambios en archivos Python para validar")
+        print("✅ COMMIT APROBADO")
+        sys.exit(0)
+
     # Verificar salud de la API
     if not check_api_health(server_url):
         print("\n❌ COMMIT RECHAZADO: API no está disponible")
         sys.exit(1)
 
     # Evaluar el código
-    if not evaluate_code(server_url, token):
+    if not evaluate_code(server_url, token, changes):
         print("\n❌ COMMIT RECHAZADO: Error en la evaluación del código")
         sys.exit(1)
 
