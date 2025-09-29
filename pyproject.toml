@@ -1,6 +1,6 @@
 [project]
 name = "pt-appsec-ml-hook"
-version = "0.0.9"
+version = "0.0.10"
 description = "Run OWASP validations using specialized LLM models"
 readme = "README.md"
 requires-python = ">=3.12"
