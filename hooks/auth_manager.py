@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any
 
 import requests
 
-from oauth_login import Auth0Config, OAuth2PKCEFlow, TokenStorage
+from .oauth_login import Auth0Config, OAuth2PKCEFlow, TokenStorage
 
 
 class AuthenticationManager:

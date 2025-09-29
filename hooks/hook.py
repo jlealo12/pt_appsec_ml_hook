@@ -12,7 +12,7 @@ from pathlib import Path
 import requests
 
 # Importar el gestor de autenticación
-from auth_manager import AuthenticationManager
+from .auth_manager import AuthenticationManager
 
 
 def get_staged_python_files():
