@@ -64,7 +64,7 @@ wheels = [
 
 [[package]]
 name = "pt-appsec-ml-hook"
-version = "0.0.5"
+version = "0.0.6"
 source = { editable = "." }
 dependencies = [
     { name = "requests" },
