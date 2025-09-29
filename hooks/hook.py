@@ -89,7 +89,7 @@ def evaluate_code(base_url, token):
             for item in response.json()["result"]:
                 print(f"Categoría evaluada: {item['owasp_name']}")
                 print(item["response"])
-            return True
+            return response.json()["status"] == "success"
         elif response.status_code == 401:
             print("❌ ERROR: Token de autenticación inválido o expirado")
             print("🔄 Por favor, renueva tu token de autenticación")
