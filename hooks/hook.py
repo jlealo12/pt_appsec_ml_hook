@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Pre-commit hook para validar código mediante API con OAuth2.0
+Versión integrada con autenticación automática
 """
 import json
 import os
@@ -10,36 +11,8 @@ from pathlib import Path
 
 import requests
 
-
-def load_auth_token():
-    """Carga el token de autenticación desde el archivo JSON."""
-    token_path = os.environ.get("AUTH_TOKEN_PATH")
-
-    if not token_path:
-        print("❌ ERROR: Variable de ambiente AUTH_TOKEN_PATH no está definida")
-        return None
-
-    if not os.path.exists(token_path):
-        print(f"❌ ERROR: Archivo de token no encontrado en: {token_path}")
-        return None
-
-    try:
-        with open(token_path, "r") as f:
-            token_data = json.load(f)
-
-        # Asumiendo que el token está en el campo 'access_token'
-        token = token_data.get("access_token")
-        if not token:
-            print("❌ ERROR: Campo 'access_token' no encontrado en el archivo de token")
-            return None
-
-        return token
-    except json.JSONDecodeError:
-        print(f"❌ ERROR: Archivo de token no es un JSON válido: {token_path}")
-        return None
-    except Exception as e:
-        print(f"❌ ERROR al leer el archivo de token: {str(e)}")
-        return None
+# Importar el gestor de autenticación
+from auth_manager import AuthenticationManager
 
 
 def get_staged_python_files():
@@ -64,14 +37,12 @@ def get_staged_python_files():
 def get_file_changes(filepath):
     """Obtiene los cambios (diff) de un archivo específico."""
     try:
-        # Obtener el diff del archivo staged
         result = subprocess.run(
             ["git", "diff", "--cached", "--", filepath],
             capture_output=True,
             text=True,
             check=True,
         )
-
         return result.stdout
     except subprocess.CalledProcessError as e:
         print(f"❌ ERROR al obtener cambios de {filepath}: {e}")
@@ -81,14 +52,11 @@ def get_file_changes(filepath):
 def get_file_content(filepath):
     """Obtiene el contenido completo del archivo después de los cambios."""
     try:
-        # Obtener el contenido del archivo en el staging area
         result = subprocess.run(
             ["git", "show", f":{filepath}"], capture_output=True, text=True, check=True
         )
-
         return result.stdout
     except subprocess.CalledProcessError:
-        # Si falla, puede ser un archivo nuevo, intentar leerlo directamente
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 return f.read()
@@ -105,7 +73,7 @@ def collect_changes():
         print("ℹ️  No hay archivos Python en el commit")
         return None
 
-    print(f"📝 Archivos Python detectados: {len(python_files)}")
+    print(f"📁 Archivos Python detectados: {len(python_files)}")
 
     changes = []
     for filepath in python_files:
@@ -115,22 +83,26 @@ def collect_changes():
         content = get_file_content(filepath)
 
         file_data = {"filepath": filepath, "diff": diff, "content": content}
-
         changes.append(file_data)
 
     return changes
 
 
-def check_api_health(base_url):
-    """Verifica el estado de salud de la API."""
+def check_api_health(base_url, token):
+    """Verifica el estado de salud de la API con autenticación."""
     health_url = f"{base_url}/health"
+    headers = {"Authorization": f"Bearer {token}"}
 
     try:
-        print(f"🔍 Verificando estado de la API: {health_url}")
-        response = requests.get(health_url, timeout=10)
+        print(f"🏥 Verificando estado de la API: {health_url}")
+        response = requests.get(health_url, headers=headers, timeout=10)
 
         if response.status_code == 200:
             print("✅ API está disponible")
+            return True
+        elif response.status_code == 401:
+            print("⚠️  Token no autorizado para este endpoint")
+            # Aún retornamos True porque el servidor está disponible
             return True
         else:
             print(f"❌ API retornó estado: {response.status_code}")
@@ -156,7 +128,6 @@ def format_changes_as_string(changes):
         content = file_data["content"]
         diff = file_data["diff"]
 
-        # Formato: filepath seguido del contenido completo
         file_section = f"=== File: {filepath} ===\n"
         file_section += f"{content}\n"
         file_section += f"\n=== Diff for {filepath} ===\n"
@@ -174,7 +145,6 @@ def evaluate_code(base_url, token, changes):
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     code_string = format_changes_as_string(changes)
-
     payload = {"code": code_string}
 
     try:
@@ -185,17 +155,29 @@ def evaluate_code(base_url, token, changes):
 
         if response.status_code == 200:
             print("✅ Código evaluado exitosamente")
-            for item in response.json()["result"]:
-                print(f"Categoría evaluada: {item['owasp_name']}")
-                print(item["response"])
-            return response.json()["status"] == "success"
+            result = response.json()
+
+            if "result" in result:
+                for item in result["result"]:
+                    print(f"\nCategoría evaluada: {item.get('owasp_name', 'N/A')}")
+                    print(item.get("response", "Sin respuesta"))
+
+            return result.get("status") == "success"
+
         elif response.status_code == 401:
             print("❌ ERROR: Token de autenticación inválido o expirado")
-            print("🔄 Por favor, renueva tu token de autenticación")
+            print("💡 El token será renovado automáticamente en el próximo intento")
+            # Limpiar token inválido
+            from auth_manager import AuthenticationManager
+
+            manager = AuthenticationManager()
+            manager.storage.clear_tokens()
             return False
+
         elif response.status_code == 403:
             print("❌ ERROR: Acceso prohibido. Verifica tus permisos")
             return False
+
         else:
             print(f"❌ ERROR: La API retornó estado {response.status_code}")
             try:
@@ -228,12 +210,17 @@ def main():
         print("❌ ERROR: Variable de ambiente SERVER_URL no está definida")
         sys.exit(1)
 
-    # Remover trailing slash si existe
     server_url = server_url.rstrip("/")
 
-    # Cargar el token de autenticación
-    token = load_auth_token()
-    if not token:
+    # Inicializar gestor de autenticación
+    auth_manager = AuthenticationManager()
+
+    # Obtener token válido (se autenticará si es necesario)
+    try:
+        token = auth_manager.ensure_authenticated()
+        print("✅ Token de autenticación obtenido")
+    except SystemExit:
+        # El gestor ya imprimió los mensajes de error
         sys.exit(1)
 
     # Recopilar cambios en archivos Python
@@ -244,7 +231,7 @@ def main():
         sys.exit(0)
 
     # Verificar salud de la API
-    if not check_api_health(server_url):
+    if not check_api_health(server_url, token):
         print("\n❌ COMMIT RECHAZADO: API no está disponible")
         sys.exit(1)
 
